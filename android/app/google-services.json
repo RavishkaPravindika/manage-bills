@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "423048407162",
+    "firebase_url": "https://test-admin-database-default-rtdb.firebaseio.com",
+    "project_id": "test-admin-database",
+    "storage_bucket": "test-admin-database.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:423048407162:android:4f08b0b553af1eecaff3c3",
+        "android_client_info": {
+          "package_name": "com.managebills.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "423048407162-trat0kimu6huqb7ofusiugis5o3dsrgd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCiLz3fjBqptq4189BNBki6TJaNeW5Ntgk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "423048407162-trat0kimu6huqb7ofusiugis5o3dsrgd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
