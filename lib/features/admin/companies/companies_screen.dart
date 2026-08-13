@@ -1,23 +1,35 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:manage_bills/app/theme.dart';
 import 'package:manage_bills/core/constants.dart';
+import 'package:manage_bills/features/auth/auth_provider.dart';
 import 'package:manage_bills/models/company.dart';
+import 'package:manage_bills/models/user_role.dart';
 
 // ============================================================
-// Companies Screen — modern redesign
+// Companies Screen — modern redesign with search, ownership & recycle bin
 // ============================================================
 
-class CompaniesScreen extends ConsumerWidget {
+class CompaniesScreen extends ConsumerStatefulWidget {
   const CompaniesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CompaniesScreen> createState() => _CompaniesScreenState();
+}
+
+class _CompaniesScreenState extends ConsumerState<CompaniesScreen> {
+  String _searchQuery = '';
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final role = ref.watch(userRoleProvider).valueOrNull ?? UserRole.guest;
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return Scaffold(
       body: CustomScrollView(
@@ -57,6 +69,28 @@ class CompaniesScreen extends ConsumerWidget {
             ),
           ),
 
+          // Search Bar
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search companies by name...',
+                  prefixIcon: const Icon(Icons.manage_search_rounded),
+                  isDense: true,
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () =>
+                              setState(() => _searchQuery = ''),
+                        )
+                      : null,
+                ),
+                onChanged: (v) => setState(() => _searchQuery = v),
+              ),
+            ),
+          ),
+
           // List
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
@@ -69,13 +103,25 @@ class CompaniesScreen extends ConsumerWidget {
                   child: Center(child: CircularProgressIndicator()),
                 );
               }
-              final docs = snap.data?.docs ?? [];
+              final allDocs = snap.data?.docs ?? [];
+              final docs = _searchQuery.isEmpty
+                  ? allDocs
+                  : allDocs.where((d) {
+                      final name =
+                          (d.data()['name'] as String? ?? '').toLowerCase();
+                      return name.contains(_searchQuery.toLowerCase());
+                    }).toList();
+
               if (docs.isEmpty) {
                 return SliverFillRemaining(
                   child: _EmptyPlaceholder(
                     icon: Icons.business_outlined,
-                    title: 'No companies yet',
-                    subtitle: 'Tap + to add your first company',
+                    title: _searchQuery.isNotEmpty
+                        ? 'No matching companies'
+                        : 'No companies yet',
+                    subtitle: _searchQuery.isNotEmpty
+                        ? 'Try a different search term'
+                        : 'Tap + to add your first company',
                     cs: cs,
                   ),
                 );
@@ -91,6 +137,8 @@ class CompaniesScreen extends ConsumerWidget {
                       company: company,
                       isDark: isDark,
                       cs: cs,
+                      role: role,
+                      currentUid: currentUid,
                     );
                   },
                 ),
@@ -122,11 +170,22 @@ class CompaniesScreen extends ConsumerWidget {
 }
 
 class _CompanyCard extends StatelessWidget {
-  const _CompanyCard(
-      {required this.company, required this.isDark, required this.cs});
+  const _CompanyCard({
+    required this.company,
+    required this.isDark,
+    required this.cs,
+    required this.role,
+    required this.currentUid,
+  });
   final Company company;
   final bool isDark;
   final ColorScheme cs;
+  final UserRole role;
+  final String currentUid;
+
+  bool get _canEdit =>
+      role.isSuperAdmin ||
+      (role.isAdmin && company.createdBy == currentUid);
 
   @override
   Widget build(BuildContext context) {
@@ -178,18 +237,22 @@ class _CompanyCard extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _IconAction(
-                    key: Key('edit_company_${company.id}'),
-                    icon: Icons.edit_outlined,
-                    color: cs.primary,
-                    onTap: () => _showEditForm(context),
-                  ),
-                  _IconAction(
-                    key: Key('delete_company_${company.id}'),
-                    icon: Icons.delete_outline,
-                    color: cs.error,
-                    onTap: () => _confirmDelete(context),
-                  ),
+                  if (_canEdit)
+                    _IconAction(
+                      key: Key('edit_company_${company.id}'),
+                      icon: Icons.edit_outlined,
+                      color: cs.primary,
+                      onTap: () => _showEditForm(context),
+                    ),
+                  if (role.isSuperAdmin) ...[
+                    if (_canEdit) const SizedBox(width: 4),
+                    _IconAction(
+                      key: Key('delete_company_${company.id}'),
+                      icon: Icons.delete_outline,
+                      color: cs.error,
+                      onTap: () => _confirmDelete(context),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -214,8 +277,7 @@ class _CompanyCard extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete Company'),
-        content:
-            Text('Delete "${company.name}"? This cannot be undone.'),
+        content: Text('Move "${company.name}" to recycle bin?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -226,7 +288,18 @@ class _CompanyCard extends StatelessWidget {
                 backgroundColor: Theme.of(context).colorScheme.error),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await FirebaseFirestore.instance
+              final fs = FirebaseFirestore.instance;
+              final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+              // Move to recycle bin
+              await fs.collection(FirestoreCollections.recycleBin).add({
+                'originalCollection': FirestoreCollections.companies,
+                'originalId': company.id,
+                'data': company.toMap(),
+                'deletedBy': uid,
+                'deletedAt': Timestamp.now(),
+                'itemName': 'Company: ${company.name}',
+              });
+              await fs
                   .collection(FirestoreCollections.companies)
                   .doc(company.id)
                   .delete();
@@ -271,10 +344,16 @@ class _CompanyFormSheetState extends State<CompanyFormSheet> {
     setState(() => _saving = true);
     final col = FirebaseFirestore.instance
         .collection(FirestoreCollections.companies);
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     if (widget.company == null) {
-      await col.add({'name': _nameCtrl.text.trim()});
+      await col.add({
+        'name': _nameCtrl.text.trim(),
+        'createdBy': uid,
+      });
     } else {
-      await col.doc(widget.company!.id).update({'name': _nameCtrl.text.trim()});
+      await col.doc(widget.company!.id).update({
+        'name': _nameCtrl.text.trim(),
+      });
     }
     if (mounted) Navigator.of(context).pop();
   }

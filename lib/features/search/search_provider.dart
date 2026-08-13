@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:manage_bills/core/constants.dart';
@@ -9,6 +11,7 @@ import 'package:manage_bills/models/user_role.dart';
 // Search Provider — multi-field product search
 // Routes guest queries to /publicProducts (safe fields only)
 // Routes admin queries to /products (full fields)
+// Supports debounced dynamic search.
 // ============================================================
 
 /// Search query parameters — empty strings mean "no filter".
@@ -51,17 +54,19 @@ class SearchQuery {
 /// or a [PublicProduct] (guest). The UI inspects [isAdmin] to
 /// decide which fields to display.
 class SearchResult {
-  const SearchResult.admin(this.product)
+  const SearchResult.admin(this.product, {this.companyName = ''})
       : publicProduct = null,
         isAdmin = true;
 
   const SearchResult.guest(this.publicProduct)
       : product = null,
-        isAdmin = false;
+        isAdmin = false,
+        companyName = '';
 
   final Product? product;
   final PublicProduct? publicProduct;
   final bool isAdmin;
+  final String companyName;
 
   String get id => product?.id ?? publicProduct!.id;
   String get barcode => product?.barcode ?? publicProduct!.barcode;
@@ -80,8 +85,22 @@ class SearchNotifier extends StateNotifier<AsyncValue<List<SearchResult>>> {
 
   final Ref _ref;
   SearchQuery _lastQuery = const SearchQuery();
+  Timer? _debounceTimer;
 
   SearchQuery get lastQuery => _lastQuery;
+
+  /// Debounced search — waits 300ms before firing.
+  void searchDebounced(SearchQuery query) {
+    _debounceTimer?.cancel();
+    _lastQuery = query;
+    if (query.isEmpty) {
+      state = const AsyncValue.data([]);
+      return;
+    }
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      search(query);
+    });
+  }
 
   Future<void> search(SearchQuery query) async {
     if (query.isEmpty) {
@@ -109,13 +128,11 @@ class SearchNotifier extends StateNotifier<AsyncValue<List<SearchResult>>> {
     }
   }
 
-  /// Search /products (full admin access).
+  /// Search /products (full admin access) + resolve company names.
   Future<List<SearchResult>> _searchAdmin(SearchQuery q) async {
     final col = FirebaseFirestore.instance
         .collection(FirestoreCollections.products);
 
-    // Firestore doesn't support multi-field OR queries natively;
-    // we run the most specific filter and filter the rest client-side.
     QuerySnapshot<Map<String, dynamic>> snap;
 
     if (q.barcode.isNotEmpty) {
@@ -129,13 +146,8 @@ class SearchNotifier extends StateNotifier<AsyncValue<List<SearchResult>>> {
           .limit(50)
           .get();
     } else if (q.itemName.isNotEmpty) {
-      final name = q.itemName.trim().toLowerCase();
-      // Prefix search using range query.
-      snap = await col
-          .where('itemName', isGreaterThanOrEqualTo: name)
-          .where('itemName', isLessThan: '${name}z')
-          .limit(50)
-          .get();
+      // Fetch all and filter client-side for dynamic partial matching
+      snap = await col.limit(200).get();
     } else {
       final spec = q.specification.trim().toLowerCase();
       snap = await col
@@ -145,9 +157,31 @@ class SearchNotifier extends StateNotifier<AsyncValue<List<SearchResult>>> {
           .get();
     }
 
-    return snap.docs
-        .map((d) => SearchResult.admin(Product.fromDoc(d)))
-        .where((r) => _clientFilter(r, q))
+    final products = snap.docs
+        .map((d) => Product.fromDoc(d))
+        .where((p) => _clientFilterProduct(p, q))
+        .toList();
+
+    // Resolve company names
+    final companyIds = products.map((p) => p.companyId).toSet().toList();
+    final companyMap = <String, String>{};
+    // Batch fetch companies (Firestore whereIn limited to 30)
+    for (var i = 0; i < companyIds.length; i += 30) {
+      final batch = companyIds.sublist(
+          i, i + 30 > companyIds.length ? companyIds.length : i + 30);
+      if (batch.isEmpty) continue;
+      final companiesSnap = await FirebaseFirestore.instance
+          .collection(FirestoreCollections.companies)
+          .where(FieldPath.documentId, whereIn: batch)
+          .get();
+      for (final doc in companiesSnap.docs) {
+        companyMap[doc.id] = doc.data()['name'] as String? ?? '';
+      }
+    }
+
+    return products
+        .map((p) => SearchResult.admin(p,
+            companyName: companyMap[p.companyId] ?? p.companyId))
         .toList();
   }
 
@@ -169,12 +203,8 @@ class SearchNotifier extends StateNotifier<AsyncValue<List<SearchResult>>> {
           .limit(50)
           .get();
     } else if (q.itemName.isNotEmpty) {
-      final name = q.itemName.trim().toLowerCase();
-      snap = await col
-          .where('itemName', isGreaterThanOrEqualTo: name)
-          .where('itemName', isLessThan: '${name}z')
-          .limit(50)
-          .get();
+      // Fetch all and filter client-side for dynamic partial matching
+      snap = await col.limit(200).get();
     } else {
       final spec = q.specification.trim().toLowerCase();
       snap = await col
@@ -188,6 +218,29 @@ class SearchNotifier extends StateNotifier<AsyncValue<List<SearchResult>>> {
         .map((d) => SearchResult.guest(PublicProduct.fromDoc(d)))
         .where((r) => _clientFilter(r, q))
         .toList();
+  }
+
+  /// Client-side filter for Product objects (admin search).
+  bool _clientFilterProduct(Product p, SearchQuery q) {
+    if (q.barcode.isNotEmpty &&
+        !p.barcode.contains(q.barcode.trim())) {
+      return false;
+    }
+    if (q.itemCode.isNotEmpty &&
+        !p.itemCode.contains(q.itemCode.trim())) {
+      return false;
+    }
+    if (q.itemName.isNotEmpty &&
+        !p.itemName.toLowerCase().contains(q.itemName.trim().toLowerCase())) {
+      return false;
+    }
+    if (q.specification.isNotEmpty &&
+        !p.specification
+            .toLowerCase()
+            .contains(q.specification.trim().toLowerCase())) {
+      return false;
+    }
+    return true;
   }
 
   /// Client-side cross-field filter applied after the primary query.
@@ -208,8 +261,15 @@ class SearchNotifier extends StateNotifier<AsyncValue<List<SearchResult>>> {
   }
 
   void clear() {
+    _debounceTimer?.cancel();
     _lastQuery = const SearchQuery();
     state = const AsyncValue.data([]);
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
   }
 }
 

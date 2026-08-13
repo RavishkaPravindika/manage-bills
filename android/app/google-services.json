@@ -15,6 +15,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "423048407162-do8701puclm7ibkhdt2doj4jvuo5e2gc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.managebills.app",
+            "certificate_hash": "2cb2dbe913bcb81b435fbfb39c73d6b951db02e7"
+          }
+        },
+        {
           "client_id": "423048407162-trat0kimu6huqb7ofusiugis5o3dsrgd.apps.googleusercontent.com",
           "client_type": 3
         }

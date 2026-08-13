@@ -9,7 +9,7 @@ import 'package:manage_bills/features/search/search_provider.dart';
 import 'package:manage_bills/models/user_role.dart';
 
 // ============================================================
-// Search Screen — modern redesign
+// Search Screen — modern redesign with dynamic search
 // ============================================================
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -49,6 +49,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     super.dispose();
   }
 
+  /// Triggers a debounced search with current field values.
+  void _triggerDynamicSearch() {
+    ref.read(searchProvider.notifier).searchDebounced(SearchQuery(
+          barcode: _barcodeCtrl.text.trim(),
+          itemCode: _codeCtrl.text.trim(),
+          itemName: _nameCtrl.text.trim(),
+          specification: _specCtrl.text.trim(),
+        ));
+  }
+
   void _search() {
     ref.read(searchProvider.notifier).search(SearchQuery(
           barcode: _barcodeCtrl.text.trim(),
@@ -72,7 +82,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     );
     if (result != null && result.isNotEmpty) {
       _barcodeCtrl.text = result;
-      setState(() {});
+      _search();
     }
   }
 
@@ -149,151 +159,106 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
           ),
 
           SliverToBoxAdapter(
-            child: Column(
-              children: [
-                // ── Search form card ──────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Card(
-                    elevation: isDark ? 0 : 2,
-                    shadowColor: Colors.black12,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Card(
+                elevation: isDark ? 0 : 2,
+                shadowColor: Colors.black12,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      // Barcode + camera
+                      Row(
                         children: [
-                          // Barcode + camera
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  key: const Key('search_barcode_field'),
-                                  controller: _barcodeCtrl,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Barcode',
-                                    prefixIcon:
-                                        Icon(Icons.barcode_reader, size: 18),
-                                    isDense: true,
-                                  ),
-                                  onSubmitted: (_) => _search(),
-                                ),
+                          Expanded(
+                            child: TextField(
+                              key: const Key('search_barcode_field'),
+                              controller: _barcodeCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Barcode',
+                                prefixIcon:
+                                    Icon(Icons.barcode_reader, size: 18),
+                                isDense: true,
                               ),
-                              const SizedBox(width: 8),
-                              _ScanButton(onPressed: _openScanner),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  key: const Key('search_code_field'),
-                                  controller: _codeCtrl,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Item Code',
-                                    isDense: true,
-                                  ),
-                                  onSubmitted: (_) => _search(),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: TextField(
-                                  key: const Key('search_name_field'),
-                                  controller: _nameCtrl,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Item Name',
-                                    isDense: true,
-                                  ),
-                                  onSubmitted: (_) => _search(),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            key: const Key('search_spec_field'),
-                            controller: _specCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Specification',
-                              isDense: true,
+                              onChanged: (_) => _triggerDynamicSearch(),
+                              onSubmitted: (_) => _search(),
                             ),
-                            onSubmitted: (_) => _search(),
                           ),
-                          const SizedBox(height: 14),
-                          // Search + Clear buttons
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: _SearchButton(onPressed: _search),
+                          const SizedBox(width: 8),
+                          _ScanButton(onPressed: _openScanner),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              key: const Key('search_code_field'),
+                              controller: _codeCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Item Code',
+                                isDense: true,
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton(
-                                  key: const Key('search_clear_button'),
-                                  onPressed: _clear,
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 14),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(12)),
-                                  ),
-                                  child: const Text('Clear'),
-                                ),
+                              onChanged: (_) => _triggerDynamicSearch(),
+                              onSubmitted: (_) => _search(),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              key: const Key('search_name_field'),
+                              controller: _nameCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Item Name',
+                                isDense: true,
                               ),
-                            ],
+                              onChanged: (_) => _triggerDynamicSearch(),
+                              onSubmitted: (_) => _search(),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                ),
-
-                // ── Guest notice chip ─────────────────────────
-                if (role.isGuest)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: cs.primaryContainer,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: cs.primary.withValues(alpha: 0.2)),
+                      const SizedBox(height: 10),
+                      TextField(
+                        key: const Key('search_spec_field'),
+                        controller: _specCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Specification',
+                          isDense: true,
+                        ),
+                        onChanged: (_) => _triggerDynamicSearch(),
+                        onSubmitted: (_) => _search(),
                       ),
-                      child: Row(
+                      const SizedBox(height: 14),
+                      // Search + Clear buttons
+                      Row(
                         children: [
-                          Icon(Icons.info_outline,
-                              size: 16, color: cs.onPrimaryContainer),
+                          Expanded(
+                            flex: 3,
+                            child: _SearchButton(onPressed: _search),
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              'Guest mode — login to see full pricing & admin tools',
-                              style: TextStyle(
-                                color: cs.onPrimaryContainer,
-                                fontSize: 12,
+                            child: OutlinedButton(
+                              key: const Key('search_clear_button'),
+                              onPressed: _clear,
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(12)),
                               ),
+                              child: const Text('Clear'),
                             ),
-                          ),
-                          TextButton(
-                            onPressed: () => context.go('/login'),
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            child: Text('Login',
-                                style: TextStyle(
-                                    color: cs.primary, fontSize: 12)),
                           ),
                         ],
                       ),
-                    ),
+                    ],
                   ),
-              ],
+                ),
+              ),
             ),
           ),
 
@@ -373,7 +338,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   }
 }
 
-// ── Gradient search button (uses search.png with fallback) ────
+// ── Gradient search button ────────────────────────────────────
 
 class _SearchButton extends StatelessWidget {
   const _SearchButton({required this.onPressed});
@@ -399,25 +364,19 @@ class _SearchButton extends StatelessWidget {
           key: const Key('search_submit_button'),
           borderRadius: BorderRadius.circular(12),
           onTap: onPressed,
-          child: Padding(
+          child: const Padding(
             padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset(
-                  'assets/search.png',
-                  width: 20,
-                  height: 20,
+                Icon(
+                  Icons.manage_search_rounded,
                   color: Colors.white,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.search,
-                    color: Colors.white,
-                    size: 20,
-                  ),
+                  size: 22,
                 ),
-                const SizedBox(width: 8),
-                const Text(
+                SizedBox(width: 8),
+                Text(
                   'Search',
                   style: TextStyle(
                     color: Colors.white,
@@ -561,7 +520,7 @@ class _ProductCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
-            // Admin-only pricing
+            // Admin-only pricing + company name
             if (role.canManage && result.product != null) ...[
               const SizedBox(height: 10),
               Divider(height: 1, color: cs.outlineVariant),
@@ -575,12 +534,23 @@ class _ProductCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Text(
-                      'Co: ${result.product!.companyId}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurface.withValues(alpha: 0.5),
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      children: [
+                        Icon(Icons.business, size: 14, color: cs.outline),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            result.companyName.isNotEmpty
+                                ? result.companyName
+                                : 'Unknown Company',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurface.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -660,7 +630,7 @@ class _EmptyState extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.search_rounded,
+              Icons.manage_search_rounded,
               size: 40,
               color: cs.onPrimaryContainer,
             ),

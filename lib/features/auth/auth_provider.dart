@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:manage_bills/core/constants.dart';
@@ -21,7 +22,7 @@ final userRoleProvider = FutureProvider<UserRole>((ref) async {
   return authAsync.when(
     data: (user) async {
       if (user == null) return UserRole.guest;
-      if (user.email == kSuperAdminEmail) return UserRole.superAdmin;
+      if (isSuperAdminEmail(user.email)) return UserRole.superAdmin;
 
       try {
         final doc = await FirebaseFirestore.instance
@@ -55,8 +56,7 @@ class AuthService {
   AuthService._();
 
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
-    // Web client ID — required for web and to get idToken on Android.
-    clientId: kGoogleWebClientId,
+    clientId: kIsWeb ? kGoogleWebClientId : null,
     serverClientId: kGoogleWebClientId,
     scopes: ['email', 'profile'],
   );
@@ -66,6 +66,10 @@ class AuthService {
   /// Signs in with Google and links to Firebase Auth.
   /// On first sign-in, creates a pending admins document.
   static Future<UserCredential> signInWithGoogle() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
+
     final googleUser = await _googleSignIn.signIn();
     if (googleUser == null) {
       throw Exception('Google sign-in was cancelled.');
@@ -83,20 +87,25 @@ class AuthService {
     // Auto-create a pending admin document on first sign-in
     // (only for non-super-admin accounts).
     final user = userCred.user!;
-    if (user.email != kSuperAdminEmail) {
-      final adminRef = FirebaseFirestore.instance
-          .collection(FirestoreCollections.admins)
-          .doc(user.uid);
-      final snap = await adminRef.get();
-      if (!snap.exists) {
-        await adminRef.set({
-          'uid': user.uid,
-          'email': user.email ?? '',
-          'role': 'admin',
-          'status': 'pending',
-          'photoUrl': user.photoURL ?? '',
-          'displayName': user.displayName ?? '',
-        });
+    if (!isSuperAdminEmail(user.email)) {
+      try {
+        final adminRef = FirebaseFirestore.instance
+            .collection(FirestoreCollections.admins)
+            .doc(user.uid);
+        final snap = await adminRef.get();
+        if (!snap.exists) {
+          await adminRef.set({
+            'uid': user.uid,
+            'email': user.email ?? '',
+            'role': 'admin',
+            'status': 'pending',
+            'photoUrl': user.photoURL ?? '',
+            'displayName': user.displayName ?? '',
+          });
+        }
+      } catch (e) {
+        // Log note: if creation fails or rules block it, authentication still succeeds.
+        debugPrint('Note creating pending admin document: $e');
       }
     }
 

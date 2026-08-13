@@ -4,16 +4,14 @@ rules_version = '2';
 // Manage Bills — Firestore Security Rules
 // ============================================================
 // Roles:
-//   superAdmin  → ravishkapravinsika99@gmail.com (hardcoded)
+//   superAdmin  → ravishkapravindika99@gmail.com / ravishkapravinsika99@gmail.com
 //   admin       → authenticated + admins/{uid}.status == "approved"
 //   guest       → unauthenticated (or authenticated but not approved)
 //
-// Field-masking strategy:
-//   /products/{id}       → full document; admin/superAdmin only
-//   /publicProducts/{id} → mirror with ONLY safe fields; anyone can read
-//     Safe fields: itemName, itemCode, barcode, salePrice,
-//                  specification, description
-//     HIDDEN fields: purchasePrice, companyId (physically absent)
+// Ownership:
+//   Admin can only update their own items (createdBy == uid).
+//   Super Admin can update/delete anything.
+//   Only Super Admin can delete (soft-delete to recycleBin).
 // ============================================================
 
 service cloud.firestore {
@@ -23,87 +21,88 @@ service cloud.firestore {
     // Helper functions
     // ──────────────────────────────────────────
 
-    /// True when the caller is authenticated.
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /// True when the caller is the hardcoded Super Admin.
     function isSuperAdmin() {
       return isSignedIn() &&
-             request.auth.token.email == 'ravishkapravinsika99@gmail.com';
+             (request.auth.token.email == 'ravishkapravindika99@gmail.com' ||
+              request.auth.token.email == 'ravishkapravinsika99@gmail.com');
     }
 
-    /// True when the caller has an approved admin document.
-    /// Uses get() to read the admins collection at rule evaluation time.
     function isApprovedAdmin() {
       return isSignedIn() &&
              exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.status == 'approved';
     }
 
-    /// True for either a Super Admin or an approved Admin.
     function isAdminOrAbove() {
       return isSuperAdmin() || isApprovedAdmin();
+    }
+
+    /// True if the caller created this document (createdBy field matches UID).
+    function isOwner() {
+      return isSignedIn() && resource.data.createdBy == request.auth.uid;
     }
 
     // ──────────────────────────────────────────
     // /admins/{uid}
     // ──────────────────────────────────────────
-    // • Super Admin: full read + write
-    // • Admin: read their own document only
-    // • Guest: no access
     match /admins/{uid} {
       allow read: if isSuperAdmin() ||
                     (isSignedIn() && request.auth.uid == uid);
-      allow create, update, delete: if isSuperAdmin();
+      allow create: if isSuperAdmin() ||
+                     (isSignedIn() && request.auth.uid == uid && request.resource.data.status == 'pending');
+      allow update, delete: if isSuperAdmin();
     }
 
     // ──────────────────────────────────────────
     // /companies/{companyId}
     // ──────────────────────────────────────────
-    // • Admin+: full CRUD
-    // • Guest: no access
     match /companies/{companyId} {
-      allow read, write: if isAdminOrAbove();
+      allow read: if isAdminOrAbove();
+      allow create: if isAdminOrAbove();
+      // Admin can only update their own companies; Super Admin can update any
+      allow update: if isSuperAdmin() || (isApprovedAdmin() && isOwner());
+      // Only Super Admin can delete (soft-delete handled in app)
+      allow delete: if isSuperAdmin();
     }
 
     // ──────────────────────────────────────────
     // /bills/{billId}
     // ──────────────────────────────────────────
-    // • Admin+: full CRUD
-    // • Guest: no access
     match /bills/{billId} {
-      allow read, write: if isAdminOrAbove();
+      allow read: if isAdminOrAbove();
+      allow create: if isAdminOrAbove();
+      allow update: if isSuperAdmin() || (isApprovedAdmin() && isOwner());
+      allow delete: if isSuperAdmin();
     }
 
     // ──────────────────────────────────────────
     // /products/{productId}
     // ──────────────────────────────────────────
-    // Full product document — contains purchasePrice and companyId.
-    // • Admin+: full CRUD
-    // • Guest: NO ACCESS (not even read)
     match /products/{productId} {
-      allow read, write: if isAdminOrAbove();
+      allow read: if isAdminOrAbove();
+      allow create: if isAdminOrAbove();
+      allow update: if isSuperAdmin() || (isApprovedAdmin() && isOwner());
+      allow delete: if isSuperAdmin();
     }
 
     // ──────────────────────────────────────────
     // /publicProducts/{productId}
     // ──────────────────────────────────────────
-    // Mirror collection containing ONLY safe fields.
-    // Fields present: itemName, itemCode, barcode, salePrice,
-    //                 specification, description
-    // Fields absent:  purchasePrice, companyId
-    //
-    // Maintenance: the Flutter admin app writes to BOTH /products
-    // and /publicProducts on every product create/update/delete.
-    //
-    // • Anyone (including unauthenticated guests): read
-    // • Admin+: write (to keep mirror in sync)
-    // • Guest: NO write access
     match /publicProducts/{productId} {
       allow read: if true;  // public — safe fields only in document
       allow write: if isAdminOrAbove();
+    }
+
+    // ──────────────────────────────────────────
+    // /recycleBin/{itemId}
+    // ──────────────────────────────────────────
+    // Only Super Admin can read/write the recycle bin.
+    match /recycleBin/{itemId} {
+      allow read, write: if isSuperAdmin();
     }
 
     // ──────────────────────────────────────────

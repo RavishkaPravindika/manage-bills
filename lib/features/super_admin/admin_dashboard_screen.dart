@@ -28,6 +28,14 @@ class AdminDashboardScreen extends StatelessWidget {
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               onPressed: () => context.go('/search'),
             ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white),
+                tooltip: 'Recycle Bin',
+                onPressed: () => context.go('/super-admin/recycle-bin'),
+              ),
+              const SizedBox(width: 8),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(

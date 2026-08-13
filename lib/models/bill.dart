@@ -56,6 +56,7 @@ class Bill {
     required this.companyName,
     required this.totalAmount,
     required this.items,
+    this.createdBy = '',
   });
 
   final String id;
@@ -64,6 +65,7 @@ class Bill {
   final String companyName; // denormalised for display
   final double totalAmount;
   final List<BillItem> items;
+  final String createdBy; // Firebase UID of the admin who created this bill
 
   factory Bill.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data()!;
@@ -77,6 +79,7 @@ class Bill {
       items: rawItems
           .map((e) => BillItem.fromMap(e as Map<String, dynamic>))
           .toList(),
+      createdBy: data['createdBy'] as String? ?? '',
     );
   }
 
@@ -86,6 +89,7 @@ class Bill {
         'companyName': companyName,
         'totalAmount': totalAmount,
         'items': items.map((e) => e.toMap()).toList(),
+        'createdBy': createdBy,
       };
 
   Bill copyWith({
@@ -95,6 +99,7 @@ class Bill {
     String? companyName,
     double? totalAmount,
     List<BillItem>? items,
+    String? createdBy,
   }) =>
       Bill(
         id: id ?? this.id,
@@ -103,5 +108,6 @@ class Bill {
         companyName: companyName ?? this.companyName,
         totalAmount: totalAmount ?? this.totalAmount,
         items: items ?? this.items,
+        createdBy: createdBy ?? this.createdBy,
       );
 }

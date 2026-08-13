@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:manage_bills/app/theme.dart';
 import 'package:manage_bills/features/auth/auth_provider.dart';
+import 'package:manage_bills/models/user_role.dart';
 
 // ============================================================
 // Login Screen — Glassmorphism design with Google + Email auth
@@ -76,7 +77,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     });
     try {
       await AuthService.signInWithGoogle();
-      // Router redirect handles navigation.
+      final role = await ref.read(userRoleProvider.future);
+      if (mounted) {
+        if (role.isSuperAdmin) {
+          context.go('/super-admin');
+        } else if (role.canManage) {
+          context.go('/admin/bills');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Signed in! Account is pending Super Admin approval.',
+              ),
+            ),
+          );
+          context.go('/search');
+        }
+      }
     } catch (e) {
       setState(() => _errorMessage = _friendlyError(e.toString()));
     } finally {
@@ -97,6 +114,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
       );
+      final role = await ref.read(userRoleProvider.future);
+      if (mounted) {
+        if (role.isSuperAdmin) {
+          context.go('/super-admin');
+        } else if (role.canManage) {
+          context.go('/admin/bills');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Signed in! Account is pending Super Admin approval.',
+              ),
+            ),
+          );
+          context.go('/search');
+        }
+      }
     } catch (e) {
       setState(() => _errorMessage = _friendlyError(e.toString()));
     } finally {
@@ -105,6 +139,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   String _friendlyError(String raw) {
+    debugPrint('Auth Error: $raw');
     if (raw.contains('wrong-password') ||
         raw.contains('invalid-credential') ||
         raw.contains('INVALID_LOGIN_CREDENTIALS')) {
@@ -116,13 +151,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
     if (raw.contains('cancelled')) return 'Sign-in was cancelled.';
     if (raw.contains('network')) return 'Check your internet connection.';
-    return 'Sign-in failed. Please try again.';
+    return 'Sign-in failed: ${raw.replaceAll(RegExp(r'^Exception:\s*'), '')}';
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final size = MediaQuery.sizeOf(context);
 
     return Scaffold(
       body: Stack(

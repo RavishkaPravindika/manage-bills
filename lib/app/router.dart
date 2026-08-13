@@ -8,6 +8,7 @@ import 'package:manage_bills/features/admin/companies/companies_screen.dart';
 import 'package:manage_bills/features/admin/products/products_screen.dart';
 import 'package:manage_bills/features/admin/bills/bills_screen.dart';
 import 'package:manage_bills/features/super_admin/admin_dashboard_screen.dart';
+import 'package:manage_bills/features/super_admin/recycle_bin_screen.dart';
 import 'package:manage_bills/models/user_role.dart';
 
 // ============================================================
@@ -70,6 +71,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/super-admin',
         builder: (context, state) => const AdminDashboardScreen(),
+      ),
+      GoRoute(
+        path: '/super-admin/recycle-bin',
+        builder: (context, state) => const RecycleBinScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

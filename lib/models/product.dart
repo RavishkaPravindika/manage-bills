@@ -17,6 +17,7 @@ class Product {
     required this.description,
     required this.categoryId,
     required this.companyId,
+    this.createdBy = '',
   });
 
   final String id;
@@ -29,6 +30,7 @@ class Product {
   final String description;
   final String categoryId;
   final String companyId; // hidden from guests
+  final String createdBy; // Firebase UID of admin who created this product
 
   factory Product.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data()!;
@@ -43,6 +45,7 @@ class Product {
       description: data['description'] as String? ?? '',
       categoryId: data['categoryId'] as String? ?? '',
       companyId: data['companyId'] as String? ?? '',
+      createdBy: data['createdBy'] as String? ?? '',
     );
   }
 
@@ -57,10 +60,11 @@ class Product {
         'description': description,
         'categoryId': categoryId,
         'companyId': companyId,
+        'createdBy': createdBy,
       };
 
   /// Safe map written to /publicProducts (guest-readable).
-  /// Excludes purchasePrice and companyId.
+  /// Excludes purchasePrice, companyId, and createdBy.
   Map<String, dynamic> toPublicMap() => {
         'barcode': barcode,
         'itemCode': itemCode,
@@ -81,6 +85,7 @@ class Product {
     String? description,
     String? categoryId,
     String? companyId,
+    String? createdBy,
   }) =>
       Product(
         id: id ?? this.id,
@@ -93,6 +98,7 @@ class Product {
         description: description ?? this.description,
         categoryId: categoryId ?? this.categoryId,
         companyId: companyId ?? this.companyId,
+        createdBy: createdBy ?? this.createdBy,
       );
 }
 
