@@ -29,6 +29,11 @@ class BillsScreen extends ConsumerStatefulWidget {
 class _BillsScreenState extends ConsumerState<BillsScreen> {
   String _searchQuery = '';
 
+  Future<void> _onRefresh() async {
+    setState(() {});
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -37,16 +42,34 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
     final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           SliverAppBar(
             expandedHeight: 120,
             pinned: true,
             backgroundColor: Colors.transparent,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => context.go('/search'),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/search');
+                }
+              },
             ),
+            actions: [
+              if (role.isSuperAdmin)
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white),
+                  tooltip: 'Recycle Bin',
+                  onPressed: () => context.push('/super-admin/recycle-bin'),
+                ),
+              const SizedBox(width: 8),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(
@@ -188,6 +211,7 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
           ),
         ],
       ),
+    ),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('add_bill_fab'),
         onPressed: () => Navigator.of(context).push<void>(
@@ -379,7 +403,6 @@ class _BillCard extends StatelessWidget {
                         fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
-                  // Delete — Super Admin only
                   if (role.isSuperAdmin)
                     IconButton(
                       icon: Icon(Icons.delete_outline,
@@ -418,25 +441,32 @@ class _BillCard extends StatelessWidget {
                     Theme.of(ctx).colorScheme.error),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              final fs = FirebaseFirestore.instance;
-              final uid =
-                  FirebaseAuth.instance.currentUser?.uid ?? '';
-              // Move to recycle bin
-              await fs
-                  .collection(FirestoreCollections.recycleBin)
-                  .add({
-                'originalCollection': FirestoreCollections.bills,
-                'originalId': bill.id,
-                'data': bill.toMap(),
-                'deletedBy': uid,
-                'deletedAt': Timestamp.now(),
-                'itemName':
-                    'Bill: ${bill.companyName} (${NumberFormat.currency(symbol: "Rs. ", decimalDigits: 2).format(bill.totalAmount)})',
-              });
-              await fs
-                  .collection(FirestoreCollections.bills)
-                  .doc(bill.id)
-                  .delete();
+              try {
+                final fs = FirebaseFirestore.instance;
+                final uid =
+                    FirebaseAuth.instance.currentUser?.uid ?? '';
+                await fs
+                    .collection(FirestoreCollections.recycleBin)
+                    .add({
+                  'originalCollection': FirestoreCollections.bills,
+                  'originalId': bill.id,
+                  'data': bill.toMap(),
+                  'deletedBy': uid,
+                  'deletedAt': Timestamp.now(),
+                  'itemName':
+                      'Bill: ${bill.companyName} (${NumberFormat.currency(symbol: "Rs. ", decimalDigits: 2).format(bill.totalAmount)})',
+                });
+                await fs
+                    .collection(FirestoreCollections.bills)
+                    .doc(bill.id)
+                    .delete();
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error moving to recycle bin. Please check Firestore Rules. Details: $e')),
+                  );
+                }
+              }
             },
             child: const Text('Delete'),
           ),
@@ -1125,7 +1155,6 @@ class BillDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Bill Details'),
         actions: [
-          // Only Super Admin can delete
           if (role.isSuperAdmin)
             IconButton(
               icon: Icon(Icons.delete_outline, color: cs.error),
@@ -1156,28 +1185,36 @@ class BillDetailScreen extends ConsumerWidget {
                   ),
                 );
                 if (confirm == true) {
-                  final fs = FirebaseFirestore.instance;
-                  final uid = FirebaseAuth
-                          .instance.currentUser?.uid ??
-                      '';
-                  await fs
-                      .collection(
-                          FirestoreCollections.recycleBin)
-                      .add({
-                    'originalCollection':
-                        FirestoreCollections.bills,
-                    'originalId': bill.id,
-                    'data': bill.toMap(),
-                    'deletedBy': uid,
-                    'deletedAt': Timestamp.now(),
-                    'itemName':
-                        'Bill: ${bill.companyName} (${currFmt.format(bill.totalAmount)})',
-                  });
-                  await fs
-                      .collection(FirestoreCollections.bills)
-                      .doc(bill.id)
-                      .delete();
-                  if (context.mounted) Navigator.pop(context);
+                  try {
+                    final fs = FirebaseFirestore.instance;
+                    final uid = FirebaseAuth
+                            .instance.currentUser?.uid ??
+                        '';
+                    await fs
+                        .collection(
+                            FirestoreCollections.recycleBin)
+                        .add({
+                      'originalCollection':
+                          FirestoreCollections.bills,
+                      'originalId': bill.id,
+                      'data': bill.toMap(),
+                      'deletedBy': uid,
+                      'deletedAt': Timestamp.now(),
+                      'itemName':
+                          'Bill: ${bill.companyName} (${currFmt.format(bill.totalAmount)})',
+                    });
+                    await fs
+                        .collection(FirestoreCollections.bills)
+                        .doc(bill.id)
+                        .delete();
+                    if (context.mounted) Navigator.pop(context);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error moving to recycle bin: $e')),
+                      );
+                    }
+                  }
                 }
               },
             ),

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:manage_bills/app/theme.dart';
@@ -9,8 +10,18 @@ import 'package:manage_bills/models/admin_user.dart';
 // Super Admin Dashboard — manage admin users
 // ============================================================
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
+
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  Future<void> _onRefresh() async {
+    setState(() {});
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,41 +29,51 @@ class AdminDashboardScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 120,
-            pinned: true,
-            backgroundColor: Colors.transparent,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => context.go('/search'),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white),
-                tooltip: 'Recycle Bin',
-                onPressed: () => context.go('/super-admin/recycle-bin'),
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverAppBar(
+              expandedHeight: 120,
+              pinned: true,
+              backgroundColor: Colors.transparent,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/search');
+                  }
+                },
               ),
-              const SizedBox(width: 8),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white),
+                  tooltip: 'Recycle Bin',
+                  onPressed: () => context.push('/super-admin/recycle-bin'),
                 ),
-                child: const SafeArea(
-                  child: Align(
-                    alignment: Alignment.bottomLeft,
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(20, 0, 20, 16),
-                      child: Text(
-                        'Admin Access',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -0.3,
+                const SizedBox(width: 8),
+              ],
+              flexibleSpace: FlexibleSpaceBar(
+                background: Container(
+                  decoration: const BoxDecoration(
+                    gradient: AppTheme.primaryGradient,
+                  ),
+                  child: const SafeArea(
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(20, 0, 20, 16),
+                        child: Text(
+                          'Admin Access',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.3,
+                          ),
                         ),
                       ),
                     ),
@@ -60,76 +81,76 @@ class AdminDashboardScreen extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection(FirestoreCollections.admins)
-                .orderBy('email')
-                .snapshots(),
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              final docs = snap.data?.docs ?? [];
-              final admins = docs.map(AdminUser.fromDoc).toList();
-              final pending =
-                  admins.where((a) => a.status == AdminStatus.pending).length;
-              final approved =
-                  admins.where((a) => a.status == AdminStatus.approved).length;
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection(FirestoreCollections.admins)
+                  .orderBy('email')
+                  .snapshots(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final docs = snap.data?.docs ?? [];
+                final admins = docs.map(AdminUser.fromDoc).toList();
+                final pending =
+                    admins.where((a) => a.status == AdminStatus.pending).length;
+                final approved =
+                    admins.where((a) => a.status == AdminStatus.approved).length;
 
-              return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-                sliver: SliverMainAxisGroup(
-                  slivers: [
-                    // Stats Row
-                    SliverToBoxAdapter(
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _StatCard(
-                              title: 'Pending',
-                              count: pending,
-                              color: const Color(0xFFF59E0B), // amber
+                return SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+                  sliver: SliverMainAxisGroup(
+                    slivers: [
+                      // Stats Row
+                      SliverToBoxAdapter(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _StatCard(
+                                title: 'Pending',
+                                count: pending,
+                                color: const Color(0xFFF59E0B), // amber
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _StatCard(
-                              title: 'Approved',
-                              count: approved,
-                              color: const Color(0xFF10B981), // emerald
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _StatCard(
+                                title: 'Approved',
+                                count: approved,
+                                color: const Color(0xFF10B981), // emerald
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                    if (admins.isEmpty)
-                      SliverFillRemaining(
-                        child: Center(
-                          child: Text('No admin accounts found.',
-                              style: TextStyle(color: cs.outline)),
-                        ),
-                      )
-                    else
-                      SliverList.separated(
-                        itemCount: admins.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 12),
-                        itemBuilder: (_, i) => _AdminCard(
-                          admin: admins[i],
-                          isDark: isDark,
-                          cs: cs,
+                          ],
                         ),
                       ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
+                      const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                      if (admins.isEmpty)
+                        SliverFillRemaining(
+                          child: Center(
+                            child: Text('No admin accounts found.',
+                                style: TextStyle(color: cs.outline)),
+                          ),
+                        )
+                      else
+                        SliverList.separated(
+                          itemCount: admins.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (_, i) => _AdminCard(
+                            admin: admins[i],
+                            isDark: isDark,
+                            cs: cs,
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -343,7 +364,7 @@ class _AdminCard extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Admin Record?'),
-        content: Text('Delete ${admin.email}?'),
+        content: Text('Move ${admin.email} to recycle bin?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -359,7 +380,18 @@ class _AdminCard extends StatelessWidget {
     );
 
     if (confirm == true) {
-      await FirebaseFirestore.instance
+      final fs = FirebaseFirestore.instance;
+      final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      // Soft-delete to recycleBin
+      await fs.collection(FirestoreCollections.recycleBin).add({
+        'originalCollection': FirestoreCollections.admins,
+        'originalId': admin.uid,
+        'data': admin.toMap(),
+        'deletedBy': currentUid,
+        'deletedAt': Timestamp.now(),
+        'itemName': 'Admin: ${admin.email}',
+      });
+      await fs
           .collection(FirestoreCollections.admins)
           .doc(admin.uid)
           .delete();

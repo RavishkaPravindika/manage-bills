@@ -23,6 +23,11 @@ class CompaniesScreen extends ConsumerStatefulWidget {
 class _CompaniesScreenState extends ConsumerState<CompaniesScreen> {
   String _searchQuery = '';
 
+  Future<void> _onRefresh() async {
+    setState(() {});
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -32,8 +37,11 @@ class _CompaniesScreenState extends ConsumerState<CompaniesScreen> {
     final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           // Gradient app bar
           SliverAppBar(
             expandedHeight: 100,
@@ -41,8 +49,23 @@ class _CompaniesScreenState extends ConsumerState<CompaniesScreen> {
             backgroundColor: Colors.transparent,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => context.go('/search'),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/search');
+                }
+              },
             ),
+            actions: [
+              if (role.isSuperAdmin)
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white),
+                  tooltip: 'Recycle Bin',
+                  onPressed: () => context.push('/super-admin/recycle-bin'),
+                ),
+              const SizedBox(width: 8),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(
@@ -147,6 +170,7 @@ class _CompaniesScreenState extends ConsumerState<CompaniesScreen> {
           ),
         ],
       ),
+    ),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('add_company_fab'),
         onPressed: () => _showForm(context, null),
@@ -288,21 +312,28 @@ class _CompanyCard extends StatelessWidget {
                 backgroundColor: Theme.of(context).colorScheme.error),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              final fs = FirebaseFirestore.instance;
-              final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-              // Move to recycle bin
-              await fs.collection(FirestoreCollections.recycleBin).add({
-                'originalCollection': FirestoreCollections.companies,
-                'originalId': company.id,
-                'data': company.toMap(),
-                'deletedBy': uid,
-                'deletedAt': Timestamp.now(),
-                'itemName': 'Company: ${company.name}',
-              });
-              await fs
-                  .collection(FirestoreCollections.companies)
-                  .doc(company.id)
-                  .delete();
+              try {
+                final fs = FirebaseFirestore.instance;
+                final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+                await fs.collection(FirestoreCollections.recycleBin).add({
+                  'originalCollection': FirestoreCollections.companies,
+                  'originalId': company.id,
+                  'data': company.toMap(),
+                  'deletedBy': uid,
+                  'deletedAt': Timestamp.now(),
+                  'itemName': 'Company: ${company.name}',
+                });
+                await fs
+                    .collection(FirestoreCollections.companies)
+                    .doc(company.id)
+                    .delete();
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error moving to recycle bin: $e')),
+                  );
+                }
+              }
             },
             child: const Text('Delete'),
           ),

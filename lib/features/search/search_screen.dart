@@ -86,6 +86,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     }
   }
 
+  Future<void> _onRefresh() async {
+    _search();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -96,8 +101,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           // ── Gradient App Bar ─────────────────────────────────
           SliverAppBar(
             expandedHeight: 130,
@@ -292,6 +300,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -303,25 +312,31 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
           _AppBarIconBtn(
             icon: Icons.receipt_long_outlined,
             tooltip: 'Bills',
-            onTap: () => context.go('/admin/bills'),
+            onTap: () => context.push('/admin/bills'),
           ),
           _AppBarIconBtn(
             icon: Icons.inventory_2_outlined,
             tooltip: 'Products',
-            onTap: () => context.go('/admin/products'),
+            onTap: () => context.push('/admin/products'),
           ),
           _AppBarIconBtn(
             icon: Icons.business_outlined,
             tooltip: 'Companies',
-            onTap: () => context.go('/admin/companies'),
+            onTap: () => context.push('/admin/companies'),
           ),
         ],
-        if (role.isSuperAdmin)
+        if (role.isSuperAdmin) ...[
+          _AppBarIconBtn(
+            icon: Icons.delete_sweep_outlined,
+            tooltip: 'Recycle Bin',
+            onTap: () => context.push('/super-admin/recycle-bin'),
+          ),
           _AppBarIconBtn(
             icon: Icons.admin_panel_settings_outlined,
             tooltip: 'Admin Dashboard',
-            onTap: () => context.go('/super-admin'),
+            onTap: () => context.push('/super-admin'),
           ),
+        ],
         if (role.isGuest)
           TextButton(
             onPressed: () => context.go('/login'),

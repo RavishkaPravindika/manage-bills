@@ -11,8 +11,18 @@ import 'package:manage_bills/models/recycled_item.dart';
 // or permanently delete recycled items.
 // ============================================================
 
-class RecycleBinScreen extends StatelessWidget {
+class RecycleBinScreen extends StatefulWidget {
   const RecycleBinScreen({super.key});
+
+  @override
+  State<RecycleBinScreen> createState() => _RecycleBinScreenState();
+}
+
+class _RecycleBinScreenState extends State<RecycleBinScreen> {
+  Future<void> _onRefresh() async {
+    setState(() {});
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,15 +31,24 @@ class RecycleBinScreen extends StatelessWidget {
     final dateFmt = DateFormat('dd MMM yyyy, HH:mm');
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           SliverAppBar(
             expandedHeight: 120,
             pinned: true,
             backgroundColor: Colors.transparent,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => context.go('/super-admin'),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/super-admin');
+                }
+              },
             ),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
@@ -172,6 +191,7 @@ class RecycleBinScreen extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 

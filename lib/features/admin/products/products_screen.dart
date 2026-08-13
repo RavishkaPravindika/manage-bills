@@ -29,6 +29,11 @@ class ProductsScreen extends ConsumerStatefulWidget {
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   String _searchQuery = '';
 
+  Future<void> _onRefresh() async {
+    setState(() {});
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -37,16 +42,34 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           SliverAppBar(
             expandedHeight: 100,
             pinned: true,
             backgroundColor: Colors.transparent,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => context.go('/search'),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/search');
+                }
+              },
             ),
+            actions: [
+              if (role.isSuperAdmin)
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white),
+                  tooltip: 'Recycle Bin',
+                  onPressed: () => context.push('/super-admin/recycle-bin'),
+                ),
+              const SizedBox(width: 8),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(
@@ -151,7 +174,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           ),
         ],
       ),
-      // FAB removed — products are added via bill creation
+    ),
     );
   }
 }
@@ -255,14 +278,13 @@ class _ProductCard extends StatelessWidget {
                           color: cs.primary,
                           onTap: () => _showForm(context, product),
                         ),
-                      if (_canEdit) const SizedBox(height: 4),
+                      if (_canEdit && role.isSuperAdmin) const SizedBox(height: 4),
                       if (role.isSuperAdmin)
                         _IconBtn(
                           key: Key('delete_product_${product.id}'),
                           icon: Icons.delete_outline,
                           color: cs.error,
-                          onTap: () =>
-                              _confirmDelete(context),
+                          onTap: () => _confirmDelete(context),
                         ),
                     ],
                   ),
@@ -359,30 +381,37 @@ class _ProductCard extends StatelessWidget {
                     Theme.of(dialogCtx).colorScheme.error),
             onPressed: () async {
               Navigator.of(dialogCtx).pop();
-              final fs = FirebaseFirestore.instance;
-              final uid =
-                  FirebaseAuth.instance.currentUser?.uid ?? '';
-              // Move to recycle bin
-              await fs
-                  .collection(FirestoreCollections.recycleBin)
-                  .add({
-                'originalCollection':
-                    FirestoreCollections.products,
-                'originalId': product.id,
-                'data': product.toMap(),
-                'deletedBy': uid,
-                'deletedAt': Timestamp.now(),
-                'itemName': 'Product: ${product.itemName}',
-              });
-              final batch = fs.batch();
-              batch.delete(fs
-                  .collection(FirestoreCollections.products)
-                  .doc(product.id));
-              batch.delete(fs
-                  .collection(
-                      FirestoreCollections.publicProducts)
-                  .doc(product.id));
-              await batch.commit();
+              try {
+                final fs = FirebaseFirestore.instance;
+                final uid =
+                    FirebaseAuth.instance.currentUser?.uid ?? '';
+                await fs
+                    .collection(FirestoreCollections.recycleBin)
+                    .add({
+                  'originalCollection':
+                      FirestoreCollections.products,
+                  'originalId': product.id,
+                  'data': product.toMap(),
+                  'deletedBy': uid,
+                  'deletedAt': Timestamp.now(),
+                  'itemName': 'Product: ${product.itemName}',
+                });
+                final batch = fs.batch();
+                batch.delete(fs
+                    .collection(FirestoreCollections.products)
+                    .doc(product.id));
+                batch.delete(fs
+                    .collection(
+                        FirestoreCollections.publicProducts)
+                    .doc(product.id));
+                await batch.commit();
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(content: Text('Error moving to recycle bin: $e')),
+                  );
+                }
+              }
             },
             child: const Text('Delete'),
           ),
