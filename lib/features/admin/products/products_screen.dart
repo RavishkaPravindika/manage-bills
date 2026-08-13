@@ -28,10 +28,32 @@ class ProductsScreen extends ConsumerStatefulWidget {
 
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<void> _onRefresh() async {
     setState(() {});
     await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+
+  Future<void> _scanBarcode() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => const BarcodeScannerScreen(),
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        _searchQuery = result;
+        _searchController.text = result;
+      });
+    }
   }
 
   @override
@@ -100,17 +122,33 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: TextField(
+                controller: _searchController,
                 decoration: InputDecoration(
                   hintText: 'Search products by name, code or barcode...',
                   prefixIcon: const Icon(Icons.manage_search_rounded),
                   isDense: true,
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_searchQuery.isNotEmpty)
+                        IconButton(
                           icon: const Icon(Icons.clear, size: 18),
-                          onPressed: () =>
-                              setState(() => _searchQuery = ''),
-                        )
-                      : null,
+                          onPressed: () {
+                            setState(() {
+                              _searchQuery = '';
+                              _searchController.clear();
+                            });
+                          },
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.qr_code_scanner, size: 20),
+                        tooltip: 'Scan Barcode',
+                        color: Theme.of(context).colorScheme.primary,
+                        onPressed: _scanBarcode,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ),
                 ),
                 onChanged: (v) => setState(() => _searchQuery = v),
               ),
