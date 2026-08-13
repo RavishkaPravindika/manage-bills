@@ -553,6 +553,13 @@ class _BillFormScreenState extends State<BillFormScreen> {
     }
   }
 
+  void _updatePrice(int index, double newPrice) {
+    if (newPrice < 0) return;
+    setState(() {
+      _items[index] = _items[index].copyWith(unitPrice: newPrice);
+    });
+  }
+
   Future<void> _scanBarcode() async {
     final result = await Navigator.of(context).push<String?>(
       MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
@@ -599,9 +606,12 @@ class _BillFormScreenState extends State<BillFormScreen> {
     setState(() => _saving = true);
 
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final fs = FirebaseFirestore.instance;
+    final batch = fs.batch();
 
+    final billRef = fs.collection(FirestoreCollections.bills).doc();
     final bill = Bill(
-      id: '',
+      id: billRef.id,
       date: _selectedDate,
       companyId: _selectedCompany!.id,
       companyName: _selectedCompany!.name,
@@ -609,12 +619,25 @@ class _BillFormScreenState extends State<BillFormScreen> {
       items: _items,
       createdBy: uid,
     );
+    batch.set(billRef, bill.toMap());
 
-    await FirebaseFirestore.instance
-        .collection(FirestoreCollections.bills)
-        .add(bill.toMap());
+    // Update each product's purchasePrice to the latest bill price
+    for (final item in _items) {
+      final pRef = fs.collection(FirestoreCollections.products).doc(item.productId);
+      batch.update(pRef, {'purchasePrice': item.unitPrice});
+    }
 
-    if (mounted) Navigator.of(context).pop();
+    try {
+      await batch.commit();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      setState(() => _saving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving bill: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -950,12 +973,48 @@ class _BillFormScreenState extends State<BillFormScreen> {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                               fontWeight: FontWeight.bold)),
-                      Text(
-                          '${currFmt.format(item.unitPrice)} (Purchase)',
-                          style: TextStyle(
-                              color: cs.primary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600)),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: () async {
+                           final priceController = TextEditingController(text: item.unitPrice.toString());
+                           final newPriceStr = await showDialog<String>(
+                             context: context,
+                             builder: (ctx) => AlertDialog(
+                               title: const Text('Edit Unit Price'),
+                               content: TextField(
+                                 controller: priceController,
+                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                 decoration: const InputDecoration(labelText: 'New Purchase Price', prefixText: 'Rs. '),
+                                 autofocus: true,
+                               ),
+                               actions: [
+                                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                                 FilledButton(onPressed: () => Navigator.pop(ctx, priceController.text), child: const Text('Save')),
+                               ],
+                             ),
+                           );
+                           if (newPriceStr != null) {
+                             final p = double.tryParse(newPriceStr);
+                             if (p != null) _updatePrice(i, p);
+                           }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                  '${currFmt.format(item.unitPrice)} (Purchase)',
+                                  style: TextStyle(
+                                      color: cs.primary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(width: 4),
+                              Icon(Icons.edit, size: 12, color: cs.primary),
+                            ],
+                          ),
+                        ),
+                      ),
                       const Spacer(),
                       Row(
                         children: [
